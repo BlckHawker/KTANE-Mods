@@ -9,7 +9,7 @@
     <TargetFramework>net35</TargetFramework>
     <FileAlignment>512</FileAlignment>
     <LangVersion>7.3</LangVersion>
-    <CodeAnalysisRuleSet>TweaksAssembly.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet></CodeAnalysisRuleSet>
     <OutputPath>..\Assets\CustomAssemblies\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -20,7 +20,7 @@
     <DebugType>pdbonly</DebugType>
   </PropertyGroup>
   <PropertyGroup>
-    <GameFolder Condition="'$(GameFolder)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Keep Talking and Nobody Explodes\</GameFolder>
+    <GameFolder Condition="'$(GameFolder)' == ''">G:\Steam\steamapps\common\Keep Talking and Nobody Explodes\</GameFolder>
     <Copy Condition="'$(Copy)' == ''">copy</Copy>
     <Unity Condition="'$(Unity)' == ''">C:\Program Files\Unity\Editor\Data\Managed\</Unity>
   </PropertyGroup>
