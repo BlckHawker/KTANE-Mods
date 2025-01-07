@@ -11,10 +11,8 @@ namespace TweaksAssembly.Modules.Tweaks
 {
 	internal class ForeignExchangeRatesLogging : ModuleLogging
 	{
-		string endpoint = "https://fer.eltrick.uk";
+		const string endpoint = "https://fer.eltrick.uk";
 		private KMSelectable[] buttons;
-		FieldInfo exChangeRatesFld;
-		int batteryCount;
 		bool batteryRule;
 		int baseValue;
 
@@ -23,9 +21,6 @@ namespace TweaksAssembly.Modules.Tweaks
 
 		int answer;
 
-
-		object[] countryCodesArr;
-		//Figure out how to get this array from the module
 		CountryCode[] countryCodes = new CountryCode[31]
 		{
 			new CountryCode("AUD", "036"),
@@ -65,35 +60,26 @@ namespace TweaksAssembly.Modules.Tweaks
 		{
 			// Attempt to change the API currency endpoint in the module to a valid one
 			component.SetValue("CURRENCY_API_ENDPOINT", endpoint);
-			batteryCount = bombComponent.Bomb.QueryWidgets<int>(KMBombInfo.QUERYKEY_GET_BATTERIES, "numbatteries").Sum();
-			Log($"Battery Count: {batteryCount}");
+			int batteryCount = bombComponent.Bomb.QueryWidgets<int>(KMBombInfo.QUERYKEY_GET_BATTERIES, "numbatteries").Sum();
 			batteryRule = batteryCount > 1;
-			Log("1");
-			countryCodesArr = component.GetValue<object[]>("COUNTRY_CODES");
-			Log("2");
-			Debug.Log($"This should be AUD: {countryCodesArr[0].GetValue<string>("code")}");
-			Log("3");
 			bombComponent.GetComponent<KMBombModule>().OnActivate += () =>
 			{
 				bombComponent.StartCoroutine(OnActivate());
 			};
 
 			buttons = component.GetValue<KMSelectable[]>("buttons");
-
-			Debug.Log("Button length: " + buttons.Length);
 			for (int i = 0; i < buttons.Length; i++)
 			{
-				int dummy = i;
+				int dummy = i + 1;
 
-				buttons[dummy].OnInteract += delegate
+				buttons[dummy - 1].OnInteract += delegate
 				{
-					Log("" + dummy);
-					string str = $"Pressed {dummy}. ";
-					if (component.GetValue<bool>("isReadyForInput"))
+					string str = $"Pressed button {dummy}. ";
+					if (!component.GetValue<bool>("isReadyForInput"))
 					{
 						return false;
 					}
-					str += i != answer ? "Strike!" : "Module Solved";
+					str += dummy != answer ? "Strike!" : "Module Solved";
 					Log(str);
 					return false;
 				};
@@ -108,12 +94,16 @@ namespace TweaksAssembly.Modules.Tweaks
 			{
 				yield return new WaitForSeconds(.1f);
 			}
+			//wait to verify answer has been changed
+			yield return new WaitForSeconds(.1f);
 			answer = component.GetValue<int>("answer");
+
 			if (component.GetValue<bool>("hasRetreivedExchangeRate"))
 			{
 				Log("LEDS are green");
 				GetButtonsStrings();
 
+				FieldInfo exChangeRatesFld = componentType.GetField("exchangeRates", BindingFlags.Instance | BindingFlags.NonPublic);
 				object exchangeRate = exChangeRatesFld.GetValue(component);
 				Type exchangeType = exchangeRate.GetType();
 				FieldInfo rateFld = exchangeType.GetField("rates", BindingFlags.Public | BindingFlags.Instance);
@@ -129,7 +119,6 @@ namespace TweaksAssembly.Modules.Tweaks
 			{ 
 				Log("LEDS are red");
 				GetButtonsStrings();
-
 			}
 
 			Log($"Press button {answer}");
@@ -137,15 +126,17 @@ namespace TweaksAssembly.Modules.Tweaks
 
 		private void GetButtonsStrings()
 		{
-			Log("There is more than 1 battery. Swapping base and target currency");
-			string baseValueStr = GetButtonStrings(6);
-			baseValue = int.Parse(baseValueStr);
+			if (batteryRule)
+			{ 
+				Log("There is more than 1 battery. Swapping base and target currency");
+			}
+			baseValue = int.Parse(GetButtonStrings(6));
 
 			baseCode = GetCountryCode(batteryRule ? 3 : 0);
 			targetCode = GetCountryCode(batteryRule ? 0 : 3);
 			Log($"The base is {CountryCode(baseCode)}");
 			Log($"The target is {CountryCode(targetCode)}");
-			Log($"The base value is {baseValueStr}");
+			Log($"The base value is {baseValue}");
 		}
 
 		private CountryCode GetCountryCode(int index)
