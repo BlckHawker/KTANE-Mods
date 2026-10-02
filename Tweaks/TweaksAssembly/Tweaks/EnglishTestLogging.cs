@@ -1,11 +1,4 @@
-﻿//Question X/Y
-//The earthquake _____ shook us up.
-//Given answers: literally, (not literally)
-//Expected answer: literally
-//You chose "XXX". This is (correct./incorrect. Strike!)
-//(Moving to question X/Resetting module/Module Solved). 
-
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -20,97 +13,98 @@ internal class EnglishTestLogging : ModuleLogging
 	private int stage = -1;
 	private int totalStages;
 	private static FieldInfo currentQuestionFld;
-	public static FieldInfo QuestionTextFld;
-	public static FieldInfo AnswerTextIndexFld;
-	public static FieldInfo AnswersFld;
-	public static FieldInfo CorrectAnswerIndexFld;
+	public static PropertyInfo QuestionTextProp;
+	public static PropertyInfo AnswerTextIndexProp;
+	public static PropertyInfo AnswersFldProp;
+	public static PropertyInfo CorrectAnswerIndexProp;
 
 	private string QuestionText;
 	private int AnswerTextIndex;
 	private List<string> Answers;
-	private int CorrectAnswerIndex;
+	private byte CorrectAnswerIndex;
+
+	private bool waitForNextQuestion = false;
+	private bool strike = false;
 
 	public EnglishTestLogging(BombComponent bombComponent) : base(bombComponent, "EnglishTestModule", "English Test")
 	{
-		totalStages = GetTargetQuestions();
+		currentQuestionFld = componentType.GetField("currentQuestion", BindingFlags.NonPublic | BindingFlags.Instance);
+		SubmitSelectable = component.GetValue<KMSelectable>("SubmitSelectable");
+		totalStages = component.GetValue<int>("targetQuestions");
+
 		SubmitSelectable.OnInteract += () =>
 		{
-
-			int selectedAnswerIndex = GetSelectedAnswerIndex();
-
+			int selectedAnswerIndex = component.GetValue<int>("selectedAnswerIndex");
 			bool correct = selectedAnswerIndex == CorrectAnswerIndex;
-
 			Log($"You chose: {Answers[selectedAnswerIndex]}. This is {(correct ? "correct." : "incorrect. Strike!")}");
-
 			if (correct)
 			{
-				Log(stage + 1 == totalStages ? "Module Solved." : $"Moving to question {stage + 1}.");
+				Log(stage + 1 == totalStages ? "Module Solved." : $"Moving to question {stage + 2}.");
 			}
 
 			else
 			{
 				Log("Resetting module.");
+				strike = true;
 			}
+
+			//wait 3 seconds bc that's how long the mod does before going to the next question
+			waitForNextQuestion = true;
 
 			return false;
 		};
-
 		bombComponent.OnPass += _ =>
 		{
 			moduleSolved = true;
 			return false;
 		};
+		bombComponent.StartCoroutine(HandleLogging());
 	}
 
 	private IEnumerator HandleLogging()
 	{
-		int targetQuestions = GetTargetQuestions();
-
 		//Check if module has activated
-		while (!ModuleActivated())
+		while (!component.GetValue<bool>("activated"))
 		{
 			yield return new WaitForSeconds(0.1f);
 		}
-
 		while (!moduleSolved)
 		{
 			int oldStage = stage;
-			stage = GetSolvedQuestions();
-			yield return new WaitForSeconds(0.05f);
-			if (stage != oldStage)
+			stage = component.GetValue<int>("solvedQuestions");
+			yield return new WaitForSeconds(0.1f);
+			Debug.Log("25");
+			if (stage != oldStage || strike)
 			{
-				int questionNumber = GetQuestionNumber();
-				Log($"Question {questionNumber}/{targetQuestions}");
+				strike = false;
+				if (waitForNextQuestion)
+				{
+					yield return new WaitForSeconds(3.1f);
+					waitForNextQuestion = false;
+				}
+
 				UpdateCurrentQuestionFields();
-				Log(QuestionText);
+				Log(QuestionText.Insert(AnswerTextIndex, "_____"));
 				Log("Given answers: " + string.Join(", ", Answers.ToArray()));
 				Log("Expected answer: " + Answers[CorrectAnswerIndex]);
-			}	
+			}
 		}
 		yield return null;
 	}
 
-	private bool ModuleActivated() { return component.GetValue<bool>("activated"); }
-	private int GetQuestionNumber() { return GetSolvedQuestions() + 1; }
-	private int GetSolvedQuestions() { return component.GetValue<int>("solvedQuestions"); }
-	private int GetTargetQuestions() { return component.GetValue<int>("targetQuestions"); }
-	private int GetSelectedAnswerIndex() { return component.GetValue<int>("selectedAnswerIndex"); }
-
 	private void UpdateCurrentQuestionFields()
 	{
-		currentQuestionFld = componentType?.GetField("currentQuestion", BindingFlags.NonPublic | BindingFlags.Instance);
+		var question = currentQuestionFld.GetValue(component);
+		Type questionType = question.GetType();
 
-		Type questionType = currentQuestionFld.GetType();
+		QuestionTextProp = questionType.GetProperty("QuestionText", BindingFlags.Public | BindingFlags.Instance);
+		AnswerTextIndexProp = questionType.GetProperty("AnswerTextIndex", BindingFlags.Public | BindingFlags.Instance);
+		AnswersFldProp = questionType.GetProperty("Answers", BindingFlags.Public | BindingFlags.Instance);
+		CorrectAnswerIndexProp = questionType.GetProperty("CorrectAnswerIndex", BindingFlags.Public | BindingFlags.Instance);
 
-		QuestionTextFld = questionType.GetField("QuestionText", BindingFlags.Public | BindingFlags.Instance);
-		AnswerTextIndexFld = questionType.GetField("AnswerTextIndex", BindingFlags.Public | BindingFlags.Instance);
-		AnswersFld = questionType.GetField("Answers", BindingFlags.Public | BindingFlags.Instance);
-		CorrectAnswerIndexFld = questionType.GetField("CorrectAnswerIndex", BindingFlags.Public | BindingFlags.Instance);
-
-		QuestionText = (string) QuestionTextFld.GetValue(currentQuestionFld);
-		AnswerTextIndex = (int) AnswerTextIndexFld.GetValue(currentQuestionFld);
-		Answers = (List<string>) AnswersFld.GetValue(currentQuestionFld);
-		CorrectAnswerIndex = (int) CorrectAnswerIndexFld.GetValue(currentQuestionFld);
+		QuestionText = (string) QuestionTextProp.GetValue(question, null);
+		AnswerTextIndex = (int) AnswerTextIndexProp.GetValue(question, null);
+		Answers = (List<string>) AnswersFldProp.GetValue(question, null);
+		CorrectAnswerIndex = (byte) CorrectAnswerIndexProp.GetValue(question, null);
 	}
-		
 }
