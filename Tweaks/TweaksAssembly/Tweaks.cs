@@ -16,6 +16,7 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TweaksAssembly.Patching;
+using TweaksAssembly.Patching.NativeMethods;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -31,6 +32,8 @@ class Tweaks : MonoBehaviour
 	public static TweakSettings userSettings; // This stores exactly what the user has in their settings file unlike the settings variable which includes overrides.
 	public static TweakSettings setupSettings; // The settings when the user entered the setup room. Many settings don't actually change until the user enters the setup room again.
 
+	public static NativeMethodProvider nativeMethods;
+	
 	public static bool TwitchPlaysActive => GameObject.Find("TwitchPlays_Info") != null;
 	public static Mode CurrentMode => TwitchPlaysActive ? Mode.Normal : settings.Mode;
 	public static bool TwitchPlaysActiveCache;
@@ -55,6 +58,32 @@ class Tweaks : MonoBehaviour
 	public void Awake()
 	{
 		Instance = this;
+		
+		switch (Application.platform)
+		{
+			case RuntimePlatform.WindowsEditor:
+			case RuntimePlatform.WindowsPlayer:
+				nativeMethods = new WindowsMethodProvider();
+				break;
+			case RuntimePlatform.LinuxEditor:
+			case RuntimePlatform.LinuxPlayer:
+				nativeMethods = new LinuxMethodProvider();
+				break;
+			case RuntimePlatform.OSXEditor: 
+			case RuntimePlatform.OSXPlayer:
+				nativeMethods = new OSXMethodProvider();
+				break;
+			default:
+				Debug.LogError($"[Tweaks] Unsupported platform for native methods: {Application.platform}");
+				nativeMethods = null;
+				break;
+		}
+
+		if (nativeMethods != null && !nativeMethods.Test())
+		{
+			Debug.LogError($"[Tweaks] Native method test failed on platform: {Application.platform}");
+			nativeMethods = null;
+		}
 
 		MainThreadQueue.Initialize();
 
@@ -186,7 +215,7 @@ class Tweaks : MonoBehaviour
 
 					ReflectedTypes.UpdateTypes();
 
-					foreach(var patchType in AllModulePatches)
+					foreach (var patchType in AllModulePatches)
 						Patching.EnsurePatch(patchType.Name, patchType);
 
 					break;
@@ -402,6 +431,7 @@ class Tweaks : MonoBehaviour
 		{
 			{ "type", "ROUND_START" },
 			{ "mission", Localization.GetLocalizedString(SceneManager.Instance.GameplayState.Mission.DisplayNameTerm) },
+			{ "missionId", SceneManager.Instance.GameplayState.Mission.ID },
 		});
 
 		var snoozeButton = FindObjectOfType<AlarmClock>()?.SnoozeButton;
@@ -596,6 +626,8 @@ class Tweaks : MonoBehaviour
 		if (setupRoom)
 		{
 			FreeplayDevice freeplayDevice = setupRoom.FreeplayDevice;
+			if (!freeplayDevice.gameObject.activeInHierarchy) yield break;
+
 			ExecOnDescendants(freeplayDevice.gameObject, gameObj =>
 			{
 				string gameObjName = gameObj.name;
@@ -916,6 +948,7 @@ class Tweaks : MonoBehaviour
 					new Dictionary<string, object> { { "Text", "Cases" }, { "Type", "Section" } },
 					new Dictionary<string, object> { { "Key", "BetterCasePicker" }, { "Text", "Better Case Picker" }, { "Description", "Chooses the smallest case that fits instead of a random one." } },
 					new Dictionary<string, object> { { "Key", "CaseGenerator" }, { "Text", "Case Generator" }, { "Description", "Generates a case to best fit the bomb which can be one of the colors defined by CaseColors." } },
+					new Dictionary<string, object> { { "Key", "CaseGeneratorMinModules" }, { "Text", "Case Generator Module Minimum" }, { "Description", "Disables generation of cases that hold less\nthan this many modules. (Max. 24)" } },
 					new Dictionary<string, object> { { "Key", "CaseColors" }, { "Text", "Case Colors" }, { "Description", "Controls the color of the cases that are generated with Case Generator." } },
 
 					new Dictionary<string, object> { { "Text", "Tweaks" }, { "Type", "Section" } },
@@ -925,6 +958,7 @@ class Tweaks : MonoBehaviour
 					new Dictionary<string, object> { { "Key", "InstantSkip" }, { "Text", "Instant Skip" }, { "Description", "Skips the gameplay loading screen as soon as possible." } },
 					new Dictionary<string, object> { { "Key", "SkipGameplayDelay" }, { "Text", "Skip Gameplay Delay" }, { "Description", "Skips the delay at the beginning of a round when the lights are out." } },
 					new Dictionary<string, object> { { "Key", "ModuleTweaks" }, { "Text", "Module Tweaks" }, { "Description", "Controls all module related tweaks like fixing status light positions." } },
+					new Dictionary<string, object> { {"Key", "FillExceptionLines"}, {"Text", "Fill exception lines"}, {"Description", "Fills in source code information in exceptions when possible"} },
 					new Dictionary<string, object> { { "Key", "ShowTips" }, { "Text", "Show Tips" }, { "Description", "Shows tips about Tweaks features that you may not know about." } },
 					new Dictionary<string, object> { { "Key", "PinnedSettings" }, { "Type", "Hidden" } },
 
@@ -934,6 +968,7 @@ class Tweaks : MonoBehaviour
 					new Dictionary<string, object> { { "Key", "DemandBasedModLoading" }, { "Text", "Demand-based Mod Loading" }, { "Description", "Load only the modules on a bomb instead of loading all of them when starting up." } },
 					new Dictionary<string, object> { { "Key", "DemandModLimit" }, { "Text", "Demand Mod Limit" }, { "Description", "Sets the limit of how many mods will be kept loaded after the bomb\nis over. Negative numbers will keep all mods loaded." } },
 					new Dictionary<string, object> { { "Key", "DemandBasedModsExcludeList" }, { "Text", "Exclude Demand-based Mods" }, { "Description", "Exclude mods from being loaded on demand based on module name." } },
+					new Dictionary<string, object> { { "Key", "ExcludeModuleMissions" }, { "Text", "Exclude Module Missions" }, { "Description", "Automatically adds mods that have missions to the DBML exclude list." } },
 					new Dictionary<string, object> { { "Key", "ManageHarmonyMods" }, { "Text", "Manage Harmony Mods" }, { "Description", "Enables the Harmony mod manager when loading mods." } },
 					new Dictionary<string, object> { { "Key", "LocalMods" }, { "Text", "Local Mods" }, { "Description", "Loads a mod from Steam when running the game locally." } },
 				}
@@ -991,6 +1026,7 @@ class TweakSettings
 {
 	public float FadeTime = 1f;
 	public bool InstantSkip = true;
+	public bool FillExceptionLines = true;
 	public bool ManageHarmonyMods = false;
 	public bool SkipGameplayDelay = false;
 	public bool BetterCasePicker = true;
@@ -998,6 +1034,7 @@ class TweakSettings
 	public bool DemandBasedModLoading = false;
 	public List<string> DemandBasedModsExcludeList = new List<string>();
 	public int DemandModLimit = -1;
+	public bool ExcludeModuleMissions = false;
 	public bool ReplaceObsoleteMods = true;
 	public bool SubscribeToNewMods;
 	public HUDMode BombHUD = HUDMode.Off;
@@ -1008,6 +1045,7 @@ class TweakSettings
 	public Mode Mode = Mode.Normal;
 	public int MissionSeed = -1;
 	public bool CaseGenerator = true;
+	public int CaseGeneratorMinModules = 1;
 	public bool ModuleTweaks = true;
 	public List<string> CaseColors = new List<string>();
 	public Dictionary<string, object> Holdables = new Dictionary<string, object>();
